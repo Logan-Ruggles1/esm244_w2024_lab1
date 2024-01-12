@@ -1,0 +1,167 @@
+---
+title: "Lab1"
+author: "LR"
+format: 
+  html:
+    code-fold: true
+    toc: true
+execute:
+    echo: true
+    message: false
+    warning: false
+editor: visual
+---
+
+```{r setup}
+#code chunk shortcut: crtl alt i
+library(tidyverse)
+library(here) #looks for .Rproj and starts from there
+#install.packages("sf")
+library(sf) #simple features, spatial data
+#install.packages("tmap")
+library(tmap) 
+library(janitor)
+```
+
+```{r wrangling}
+sfo_trees_df <- read_csv(here('data', 'sfo_trees', 'sfo_trees.csv')) %>% 
+  janitor::clean_names()
+#here giving issue -> reload library(tidyverse)
+
+View(sfo_trees_df)
+```
+
+# P1: Data Exploration and Wrangling Review
+
+## Ex 1
+
+Find counts of observations by 'legal_status', then select the statuses with the five highest tree counts.
+
+
+### Pseudocode
+
+Me:
+1. Count number of each legal status entry
+2. Create new table with legal status and number of trees
+3. Select 5 highest
+
+Group:
+1. Group by legal status
+2. Each obs into its own variable column, so counts are separate
+3. Summarize by tree count
+
+
+```{r}
+# way 1
+sfo_trees_df %>% 
+  group_by(legal_status) %>% 
+  summarize(tree_count = n())
+```
+```{r}
+# way 2
+top_5_status <- sfo_trees_df %>% 
+  filter(!is.na(legal_status)) %>% #drop N/As
+  group_by(legal_status) %>% 
+  summarize(tree_count = n()) %>% 
+  ungroup() %>% #removes groups when done 
+  slice_max(tree_count, n = 5) #pulls out top 5 of tree count
+  
+```
+
+Make a ggplot of the top 5 observations from above:
+
+```{r}
+ggplot(top_5_status, 
+       aes(x = fct_reorder(legal_status, tree_count),
+                         y = tree_count)) + 
+  geom_col() +
+  labs(y = 'Legal status', x = 'tree_count') + #labels
+  theme_minimal() 
+
+#geom col: like geom_bar except you can tell it which value is y axis (counts observations rather than just the #observations value as 1 count, which would mean each legal status count = 1
+#fct_reorder turns legal status into factor then organizes by tree count instead of a-z
+```
+## Ex 2
+
+Only keep observations where legal status is "Permitted Site" and caretaker is "MTA" or "DPW". Store as "permitted_mta_dpw"
+
+### Pseudocode
+
+Me:
+1. Make new table with columns legal site and caretaker
+2. cut only permitted site
+3. cut only MTA or DPW
+
+Group: 
+1. Filter, keep permitted site and caretaker categories (is and possible?)
+2. Mutate or select
+
+```{r}
+permitted_mta_dpw <- sfo_trees_df %>% 
+  filter(legal_status == 'Permitted Site' & caretaker %in% c('MTA', 'DPW')) 
+
+# %in% when want to match OR. == here would only bring back where MTA in first row, DPW in row after
+```
+
+## Example 3
+
+Only keep obs of oak and pine, then only keep columns "species", "legal_status", "plant_date", and "latitude" and "longitude". Note if tree is oak or pine.
+
+### Pseudocode
+
+1. Filter, keep species that contain "oak" or "pine". Separate by :: sides and put in separate columns?
+2. New column where if contain oak put oak, same for pine
+3. Mutate, keep species, legal status, plant_date, lat, long
+
+### Code
+
+```{r}
+oak_pine_df <- sfo_trees_df %>% 
+  filter(str_detect(species, "Oak") | str_detect(species, 'Pine')) %>% #filter for rows that contain Oak OR Pine species, " and ' treated the same
+  select(species, legal_status, plant_date, latitude, longitude) %>% 
+  mutate(type = ifelse(str_detect(species, 'Oak'), 'oak', 'pine'))
+
+#?ifelse
+```
+
+```{r}
+ggplot(data = oak_pine_df, aes(x = longitude, y = latitude, color = type)) +
+  geom_point() +
+theme_minimal () +
+theme(axis.title = element_blank()) + 
+  labs(color = 'Tree type',
+       caption = 'Location of oaks and pines in San Francisco')
+```
+## Ex 4
+
+Load list of CA native sp. How can we compare CA natives to SF trees? Add a column noting if tree native or not. Will need common and sci names separated
+
+```{r}
+ca_native_df <-read_csv(here('data/sfo_trees/ca_native_spp.csv'))
+#View(ca_native_df)
+```
+
+```{r}
+sfo_trees_native <- sfo_trees_df %>% 
+  separate(species, into = c('spp_sci', 'spp_common'), sep = ' :: ') %>% 
+  select(starts_with('spp'), 'plant_date', 'legal_status', 'longitude', 'latitude') %>% 
+  mutate(ca_native = (spp_sci %in% ca_native_df$scientific_name)) #compares spp_sci column to Scientific_name column
+
+
+#separates species column into 2 new columns, separating at ::. creates new df
+#View(sfo_trees_native)
+#looks at columns, if native it's true, if not it's false
+```
+
+```{r}
+sfo_native_status <- sfo_trees_native %>% 
+  group_by(legal_status, ca_native) %>% 
+  summarize(n_trees = n(), #counts #trees
+            n_species =(spp_sci)) # n_distinct counts #species names
+
+#View(sfo_native_status)
+```
+
+
+
+
